@@ -813,6 +813,8 @@ function gmgui.beginscrollingarea(name, x, y, width, height)
     if (not state.scrollx) then
         state.scrollx = 0
         state.scrolly = 0
+        state.drawx = 0
+        state.drawy = 0
     end
 
     changeoffsety(state.scrolly)
@@ -821,6 +823,8 @@ function gmgui.beginscrollingarea(name, x, y, width, height)
     abuf[2] = __h
     addtowindow(__drawbeginscrollingarea, 2, __drawsectionx, __drawsectiony)
 
+    state.drawx = __x
+    state.drawy = __y
     return __x, __y, __w, __h
 end
 
@@ -831,12 +835,16 @@ end
 function gmgui.endscrollingarea()
     local state = getstate()
 
-    if (input_IsMouseDown(MOUSE_4)) then
-        local min = -(__offsety - state.scrolly - state.height)
-        state.scrolly = math_max(min, state.scrolly - 2)
-    end
-    if (input_IsMouseDown(MOUSE_5)) then
-        state.scrolly = math_min(0, state.scrolly + 2)
+    --> scrolling temporarily uses side mouse buttons
+    lje.con_print(string.format("%s %s %s %s", __drawsectionx, __drawsectiony, state.width, state.height))
+    if (ishovered(__drawsectionx, __drawsectiony, state.width, state.height)) then
+        if (input_IsMouseDown(MOUSE_4)) then
+            local min = -(__offsety - state.scrolly - state.height)
+            state.scrolly = math_max(min, state.scrolly - 2)
+        end
+        if (input_IsMouseDown(MOUSE_5)) then
+            state.scrolly = math_min(0, state.scrolly + 2)
+        end
     end
 
     gmgui.endchild()
