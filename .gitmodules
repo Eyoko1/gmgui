@@ -1,0 +1,3 @@
+[submodule "modules/ljeutil"]
+	path = modules/ljeutil
+	url = https://github.com/Eyoko1/ljeutil
