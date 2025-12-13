@@ -10,9 +10,6 @@ end
 
 lje.con_print("loading gmgui")
 
-local environment = lje.env.get()
-environment.gmgui = {}
-
 local m_util = lje.include("modules/ljeutil/main.lua").init("modules/ljeutil/")
 local m_gmgui = lje.include("modules/gmgui.lua")
 

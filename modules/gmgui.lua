@@ -16,9 +16,6 @@
 --> elements are drawn by putting them into a buffer where they are represented by a fast rendering function, and a pre-allocated table
 --> this buffer is not 'cleared' per frame, but instead the length which is used for reading from it is reset back to 0 - this saves tons of time and memory
 
-local SKIP_OUT_OF_FRAME = true --> if true, elements outside of their window will not be drawn for performance reasons
-local SKIP_WINDOW = 50 --> the window of pixels where elements will be skipped for the above
-
 local surface_DrawText = surface.DrawText
 local surface_SetDrawColor = surface.SetDrawColor
 local surface_SetTextPos = surface.SetTextPos
@@ -49,6 +46,10 @@ local math_max = math.max
 local render_PushRenderTarget = render.PushRenderTarget
 local render_PopRenderTarget = render.PopRenderTarget
 
+local bit_lshift = bit.lshift
+local bit_bor = bit.bor
+local bit_band = bit.band
+
 local MOUSE_LEFT = MOUSE_LEFT
 local MOUSE_RIGHT = MOUSE_RIGHT
 local MOUSE_MIDDLE = MOUSE_MIDDLE
@@ -63,7 +64,7 @@ end
 
 local fonts = {}
 local fontdata = {}
-local function __font(name, data)
+local function __font(name, data) --> creates a font with the given name, then returns the generated name. if the font already exists, it returns the cached name
     local cached = fonts[name]
     if (cached) then
         return cached
@@ -77,11 +78,16 @@ local function __font(name, data)
     return id
 end
 
-local function __color(r, g, b, a)
+local function __color(r, g, b, a) --> fast implementation of Color
     return {r, g, b, a}
 end
 
 local gmgui = {
+    info = {
+        name = "GmGui",
+        version = "v1.1.0",
+        author = "eyoko1"
+    },
     style = {
         fonts = {
             text = __font("Text", {
@@ -118,20 +124,27 @@ local gmgui = {
             border = __color(110, 110, 128, 128)
         }
     },
+    flags = {
+        scrollablearea = {
+            invert = bit_lshift(1, 0)
+        }
+    },
     drawlist = {
         buffer = {}, --> array of window draw buffers
         length = 0, --> the number of windows in use
         target = 0, --> the index of the window currently being operated on
         size = 0 --> size of the array
     },
-    states = {} -- key: window name, value: see createstate()
+    states = {} -- key: window name, value => see createstate()
 }
 environment.gmgui = gmgui
 
+--> references to the drawlist / buffer so we don't need to index gmgui every time we need these commonly used things
 local drawlist = gmgui.drawlist
 local buffer = drawlist.buffer
+local flags = gmgui.flags
 
---> used in both rendering, and in creation of frames
+--> internal variables - be careful when editing these as you could accidentally break rendering
 local __lastoffsetx = 0
 local __lastoffsety = 0
 local __drawsectionx = 0
@@ -145,6 +158,14 @@ local __scissorx = 0
 local __scissory = 0
 local __scissorw = 0
 local __scissorh = 0
+local __invertscroll = false
+local __scrollfirst = false --> if false, the first element for an inverted scroll hasnt been added yet
+local __firstoffset = 0
+
+local __addarg1 = nil
+local __addarg2 = nil
+local __addarg3 = nil
+local __addarg4 = nil
 
 local __orderedwindows = {}
 local __windoworder = {}
@@ -166,6 +187,8 @@ for i = 1, 8 do
     __cursorstack[i] = {nil, 0, 0} --> element 1 is the parent state / frame, elements 2 and 3 are the offsetx and offsety respectively
     __cursorstacksize = i
 end
+
+local addtowindow = nil --> function - defined later
 
 local function pushcursor(state, drawx, drawy)
     local inset = __style.general.inset
@@ -226,7 +249,21 @@ end
 
 local function changeoffsety(change)
     __lastoffsety = __activecursor[3]
-    local new = __lastoffsety + change
+    local new = 0
+    if (__invertscroll) then
+        new = __lastoffsety - change
+
+        if (not __scrollfirst and __addarg1) then
+            __scrollfirst = true
+            __firstoffset = change
+            addtowindow(__addarg1, __addarg2, __addarg3, __addarg4)
+            __addarg1 = nil
+
+            --new = new - change
+        end
+    else
+        new = __lastoffsety + change
+    end
     __activecursor[3] = new
     __offsety = new
 end
@@ -247,11 +284,11 @@ local function registerlastwidth(width)
     __offsetx = offset
 end
 
-local function setcolor(color)
+local function setcolor(color) --> this is used instead for surface_SetDrawColor when using gmgui colors
     return surface_SetDrawColor(color[1], color[2], color[3], color[4])
 end
 
-local function settextcolor(color)
+local function settextcolor(color) --> this is used instead for surface_SetTextColor when using gmgui colors
     return surface_SetTextColor(color[1], color[2], color[3], color[4])
 end
 
@@ -306,12 +343,16 @@ local function getlastwindow()
 end
 
 local abuf = {false, false, false, false, false, false, false, false} --> add buffer - this is cloned into window data
-local function addtowindow(func, argcount, drawx, drawy)
-    local window = getlastwindow()
-    if (not window) then
-        __log("Failed to get window! Target: %s, Length: %s", drawlist.target, drawlist.size)
-        hook.removepre("PostRender", "gmgui test")
+function addtowindow(func, argcount, drawx, drawy, __bypassfirst)
+    if (not __bypassfirst and (__invertscroll and not __scrollfirst)) then
+        __addarg1 = func
+        __addarg2 = argcount
+        __addarg3 = drawx
+        __addarg4 = drawy
+        return
     end
+    
+    local window = getlastwindow()
     local windowdata = window[1]
     local length = windowdata[1] + 1
     windowdata[1] = length
@@ -527,8 +568,6 @@ local function __drawtext(data, x, y)
 end
 
 function gmgui.text(text)
-    if (SKIP_OUT_OF_FRAME and __offsety > __windowheight + SKIP_WINDOW) then return end
-
     local font = __style.fonts.text
 
     abuf[1] = text
@@ -552,8 +591,6 @@ local function __drawtextdisabled(data, x, y)
 end
 
 function gmgui.textdisabled(text)
-    if (SKIP_OUT_OF_FRAME and __offsety > __windowheight + SKIP_WINDOW) then return end
-
     local font = __style.fonts.text
 
     abuf[1] = text
@@ -595,8 +632,6 @@ local function __drawbutton(data, x, y)
 end
 
 function gmgui.button(text, op_disabled)
-    if (SKIP_OUT_OF_FRAME and __offsety > __windowheight + SKIP_WINDOW) then return end
-
     local font = __style.fonts.text
     surface_SetFont(font)
     local width = surface_GetTextSize(text) + 20
@@ -669,8 +704,6 @@ local function __drawcheckbox(data, x, y)
 end
 
 function gmgui.checkbox(text, op_state)
-    if (SKIP_OUT_OF_FRAME and __offsety > __windowheight + SKIP_WINDOW) then return end
-
     local state = getstate()
 
     local inner = state.inner
@@ -803,10 +836,11 @@ function gmgui.endchild()
 end
 
 local function __drawbeginscrollingarea(data, x, y)
+    __log("%s %s %s %s", x, y + __style.general.gap, x + data[1], y + data[2])
     render_SetScissorRect(x, y + __style.general.gap, x + data[1], y + data[2], true)
 end
 
-function gmgui.beginscrollingarea(name, x, y, width, height)
+function gmgui.beginscrollingarea(name, x, y, width, height, op_flags)
     local __x, __y, __w, __h = gmgui.beginchild(name, x, y, width, height)
     
     local state = gmgui.states[name]
@@ -815,13 +849,21 @@ function gmgui.beginscrollingarea(name, x, y, width, height)
         state.scrolly = 0
         state.drawx = 0
         state.drawy = 0
+        state.firstoffset = 0
     end
 
-    changeoffsety(state.scrolly)
+    __invertscroll = bit_band(op_flags or 0, flags.scrollablearea.invert) ~= 0
+
+    if (__invertscroll) then
+        __scrollfirst = false
+        changeoffsety(-state.scrolly - __h + __style.general.gap * 2 + state.firstoffset)
+    else
+        changeoffsety(state.scrolly)
+    end
 
     abuf[1] = __w
     abuf[2] = __h
-    addtowindow(__drawbeginscrollingarea, 2, __drawsectionx, __drawsectiony)
+    addtowindow(__drawbeginscrollingarea, 2, __drawsectionx, __drawsectiony, true)
 
     state.drawx = __x
     state.drawy = __y
@@ -836,32 +878,47 @@ function gmgui.endscrollingarea()
     local state = getstate()
 
     --> scrolling temporarily uses side mouse buttons
-    lje.con_print(string.format("%s %s %s %s", __drawsectionx, __drawsectiony, state.width, state.height))
     if (ishovered(__drawsectionx, __drawsectiony, state.width, state.height)) then
         if (input_IsMouseDown(MOUSE_4)) then
-            local min = -(__offsety - state.scrolly - state.height)
-            state.scrolly = math_max(min, state.scrolly - 2)
+            if (__invertscroll) then
+                state.scrolly = math_max(0, state.scrolly - 2)
+            else
+                local min = -(__offsety - state.scrolly - state.height)
+                state.scrolly = math_max(min, state.scrolly - 2)
+            end
         end
         if (input_IsMouseDown(MOUSE_5)) then
-            state.scrolly = math_min(0, state.scrolly + 2)
+            if (__invertscroll) then
+                local min = -(__offsety - state.scrolly + __style.general.gap * 2)
+                state.scrolly = math_min(min, state.scrolly + 2)
+            else
+                state.scrolly = math_min(0, state.scrolly + 2)
+            end
         end
     end
 
+    state.firstoffset = __firstoffset
+
+    __invertscroll = false
+
     gmgui.endchild()
 
-    addtowindow(__drawendscrollingarea, 0, 0, 0)
+    addtowindow(__drawendscrollingarea, 0, 0, 0, true)
 end
 
+--> sorts elements based on their z-index
 local function windowsorter(a, b)
     return a[1][2] < b[1][2]
 end
 
+--> responsible for rendering the draw buffer elements to the screen - this has been heavily optimised so its a little hard to read
 hook.pre("DrawRT", "__gmgui_render", function()
     local wlength = drawlist.length
     if (wlength == 0) then
         return
     end
 
+    --> if the windows have shifted around in any way (different z-index, different number) then we need to re-sort the ordered array of windows
     local differentlength = wlength ~= __lastlength
     if (not __sameorder or differentlength) then
         if (differentlength) then
@@ -889,6 +946,7 @@ hook.pre("DrawRT", "__gmgui_render", function()
 
     render_PushRenderTarget(lje.util.rendertarget)
 
+    --> loop through all windows
     local wi = 1
     ::draw_windows::
     local window = __orderedwindows[wi]
@@ -903,6 +961,7 @@ hook.pre("DrawRT", "__gmgui_render", function()
     __scissorh = __drawsectiony + startwindowdata[5]
     render_SetScissorRect(__scissorx, __scissory, __scissorw, __scissorh, true)
     
+    --> loop through all elements and call their associated rendering handler
     local blength = windowdata[1]
     local bi = 2
     ::draw_buffer::
@@ -924,15 +983,18 @@ hook.pre("DrawRT", "__gmgui_render", function()
     render_SetScissorRect(0, 0, 0, 0, false)
     render_PopRenderTarget()
 
+    --> prepare the global state for the next frame
     drawlist.length = 0 --> reset draw list length
     drawlist.target = 0
     __lastlength = wlength
 
+    --> perform a memory cycle if we need to
     if (__queuedcycle) then
         __cyclememory()
     end
 end)
 
+--> get mouse inputs
 hook.pre("StartCommand", "__gmgui_input", function()
     __clicked = input_WasMousePressed(MOUSE_LEFT) or input_WasMouseDoublePressed(MOUSE_LEFT)
 end)
@@ -940,7 +1002,7 @@ end)
 local __lastgc = gcinfo()
 local __lastgctime = SysTime()
 local __gcincrease = 0
-hook.pre("PostRender", "gmgui test", function()
+hook.pre("PostRender", "__gmgui_test", function()
     gmgui.startwindow("Test Window", 100, 900, 500, 300, 100)
         --[[
         gmgui.text("Example text.")
@@ -985,7 +1047,15 @@ hook.pre("PostRender", "gmgui test", function()
         gmgui.endchild()
         ]]
 
-        gmgui.beginscrollingarea("Scrolling", 0, 0, 0, 0)
+        --[[
+        gmgui.beginchild("Outer", 0, 0, 0, 0)
+            gmgui.beginchild("Inner", 0, 0, 100, 50)
+                gmgui.button("Test")
+            gmgui.endchild()
+        gmgui.endchild()
+        ]]
+
+        gmgui.beginscrollingarea("Scrolling", 0, 0, 0, 0, flags.scrollablearea.invert)
             for i = 1, 20 do
                 gmgui.button(tostring(i))
             end
