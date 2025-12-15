@@ -1,0 +1,9 @@
+# gmgui - an lje-based imgui implementation for gmod
+
+[script]
+name = "gmgui"
+version = "1.1.1"
+author = "Eyoko1"
+dependencies = [
+    "Eyoko1.ljeutil"
+]

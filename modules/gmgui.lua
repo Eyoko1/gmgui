@@ -3,7 +3,6 @@
 --*> made by eyoko1 <*--
 
 --> TODO:
-    --> gmgui.sameline()
     --> ability to collapse window (+ disabling rendering for them)
     --> gmgui.combo({string, ...})
 
@@ -83,11 +82,6 @@ local function __color(r, g, b, a) --> fast implementation of Color
 end
 
 local gmgui = {
-    info = {
-        name = "GmGui",
-        version = "v1.1.0",
-        author = "eyoko1"
-    },
     style = {
         fonts = {
             text = __font("Text", {
@@ -836,7 +830,6 @@ function gmgui.endchild()
 end
 
 local function __drawbeginscrollingarea(data, x, y)
-    __log("%s %s %s %s", x, y + __style.general.gap, x + data[1], y + data[2])
     render_SetScissorRect(x, y + __style.general.gap, x + data[1], y + data[2], true)
 end
 
