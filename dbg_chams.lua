@@ -41,23 +41,25 @@ local weapon = CreateMaterial(lje.util.random_string(), "VertexLitGeneric", {
 
 local chamsflags = bit.bor(STUDIO_RENDER, STUDIO_NOSHADOWS, STUDIO_STATIC_LIGHTING)
 
+local function renderplayerchams(target)
+    cam.IgnoreZ(true)
+    render.OverrideDepthEnable(true, false)
+        render.MaterialOverride(occluded)
+        lje.util.safe_draw_model(target, chamsflags)
+    render.OverrideDepthEnable(false)
+    cam.IgnoreZ(false)
+
+    render.MaterialOverride(visible)
+    lje.util.safe_draw_model(target, chamsflags)
+end
+
 hook.post("PreDrawViewModels", "Chams", function()
     cam.Start3D(MainEyePos(), MainEyeAngles())
         render.PushRenderTarget(lje.util.rendertarget)
             render.SetWriteDepthToDestAlpha(false)
             render.SuppressEngineLighting(true)
 
-            lje.util.iterate_players(function(target)
-                cam.IgnoreZ(true)
-                render.OverrideDepthEnable(true, false)
-                    render.MaterialOverride(occluded)
-                    lje.util.safe_draw_model(target, chamsflags)
-                render.OverrideDepthEnable(false)
-                cam.IgnoreZ(false)
-
-                render.MaterialOverride(visible)
-                lje.util.safe_draw_model(target, chamsflags)
-            end)
+            lje.util.iterate_players(renderplayerchams)
 
             render.MaterialOverride(nil)
             render.SuppressEngineLighting(false)
@@ -65,10 +67,11 @@ hook.post("PreDrawViewModels", "Chams", function()
     cam.End3D()
 end)
 
-hook.post("PreDrawViewModel", "ViewModel", function(vm)
+hook.post("PreDrawViewModel", "ViewModel", function(vm, localplayer)
     render.PushRenderTarget(lje.util.rendertarget)
         render.MaterialOverride(weapon)
         lje.util.safe_draw_model(vm, chamsflags)
+        lje.util.safe_draw_model(PLAYER.GetHands(localplayer))
         render.MaterialOverride(nil)
     render.PopRenderTarget()
 end)

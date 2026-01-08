@@ -119,6 +119,9 @@ local gmgui = {
         }
     },
     flags = {
+        window = {
+            minimized = bit_lshift(1, 0)
+        },
         scrollablearea = {
             invert = bit_lshift(1, 0)
         }
@@ -138,6 +141,9 @@ local drawlist = gmgui.drawlist
 local buffer = drawlist.buffer
 local flags = gmgui.flags
 
+--> internal flag used during stuff like minimizing windows - note that this does not register gui elements at all, and doesn't just ignore them during the drawing phase
+local __DISABLE_RENDERING = false
+
 --> internal variables - be careful when editing these as you could accidentally break rendering
 local __lastoffsetx = 0
 local __lastoffsety = 0
@@ -155,6 +161,8 @@ local __scissorh = 0
 local __invertscroll = false
 local __scrollfirst = false --> if false, the first element for an inverted scroll hasnt been added yet
 local __firstoffset = 0
+local __scroll = 0
+local __lastscroll = 0
 
 local __addarg1 = nil
 local __addarg2 = nil
@@ -562,6 +570,8 @@ local function __drawtext(data, x, y)
 end
 
 function gmgui.text(text)
+    if (__DISABLE_RENDERING) then return end
+
     local font = __style.fonts.text
 
     abuf[1] = text
@@ -585,6 +595,8 @@ local function __drawtextdisabled(data, x, y)
 end
 
 function gmgui.textdisabled(text)
+    if (__DISABLE_RENDERING) then return end
+
     local font = __style.fonts.text
 
     abuf[1] = text
@@ -602,7 +614,7 @@ data structure:
 [2]-> width
 [3]-> hovered (reference to style)
 ]]--
-local function __drawbutton(data, x, y)
+local function __drawbutton_autosize(data, x, y)
     local width = data[2]
     local height = fontdata[__style.fonts.text].size + 4
 
@@ -625,10 +637,37 @@ local function __drawbutton(data, x, y)
     surface_DrawText(data[1])
 end
 
-function gmgui.button(text, op_disabled)
+local function __drawbutton_noautosize(data, x, y)
+    local width = data[2]
+    local height = fontdata[__style.fonts.text].size + 4
+
+    local packed = data[3]
+    if (packed) then
+        setcolor(__style.frame.hovered)
+        settextcolor(__style.general.text)
+    elseif (packed == false) then
+        setcolor(__style.frame.background)
+        settextcolor(__style.general.text)
+    else
+        setcolor(__style.frame.disabled)
+        settextcolor(__style.general.textdisabled)
+    end
+
+    local text = data[1]
+
+    surface_DrawRect(x, y, width, height)
+
+    surface_SetFont(__style.fonts.text)
+    surface_SetTextPos(x + (width * 0.5) - (surface_GetTextSize(text) * 0.5), y + 2)
+    surface_DrawText(text)
+end
+
+function gmgui.button(text, op_disabled, op_width)
+    if (__DISABLE_RENDERING) then return end
+
     local font = __style.fonts.text
     surface_SetFont(font)
-    local width = surface_GetTextSize(text) + 20
+    local width = op_width or surface_GetTextSize(text) + 20
     local height = fontdata[font].size + 4
     local x = __drawsectionx + __offsetx
     local y = __drawsectiony + __offsety
@@ -647,7 +686,11 @@ function gmgui.button(text, op_disabled)
     abuf[1] = text
     abuf[2] = width
     --abuf[3] = hovered
-    addtowindow(__drawbutton, 3, x, y)
+    if (op_width) then
+        addtowindow(__drawbutton_noautosize, 3, x, y)
+    else
+        addtowindow(__drawbutton_autosize, 3, x, y)
+    end
 
     changeoffsety(height + __style.general.gap)
 
@@ -698,6 +741,8 @@ local function __drawcheckbox(data, x, y)
 end
 
 function gmgui.checkbox(text, op_state)
+    if (__DISABLE_RENDERING) then return end
+
     local state = getstate()
 
     local inner = state.inner
@@ -748,6 +793,8 @@ function gmgui.checkbox(text, op_state)
 end
 
 function gmgui.sameline()
+    if (__DISABLE_RENDERING) then return end
+
     changeoffsetx(__lastwidth + __lastoffsetx)
     changeoffsety(__lastoffsety - __offsety)
 end
@@ -785,6 +832,8 @@ local function __drawchild(data, x, y)
 end
 
 function gmgui.beginchild(name, x, y, width, height) --> returns the x, y, width, height
+    if (__DISABLE_RENDERING) then return end
+
     if (x <= 0) then
         x = __style.general.inset
     end
@@ -823,6 +872,8 @@ function gmgui.beginchild(name, x, y, width, height) --> returns the x, y, width
 end
 
 function gmgui.endchild()
+    if (__DISABLE_RENDERING) then return end
+
     popcursor()
 
     changeoffsety(__style.general.gap)
@@ -834,6 +885,8 @@ local function __drawbeginscrollingarea(data, x, y)
 end
 
 function gmgui.beginscrollingarea(name, x, y, width, height, op_flags)
+    if (__DISABLE_RENDERING) then return end
+
     local __x, __y, __w, __h = gmgui.beginchild(name, x, y, width, height)
     
     local state = gmgui.states[name]
@@ -868,24 +921,24 @@ local function __drawendscrollingarea()
 end
 
 function gmgui.endscrollingarea()
+    if (__DISABLE_RENDERING) then return end
+
     local state = getstate()
 
-    --> scrolling temporarily uses side mouse buttons
     if (ishovered(__drawsectionx, __drawsectiony, state.width, state.height)) then
-        if (input_IsMouseDown(MOUSE_4)) then
+        if (__scroll < 0) then
             if (__invertscroll) then
-                state.scrolly = math_max(0, state.scrolly - 2)
+                state.scrolly = math_max(0, state.scrolly + __scroll)
             else
                 local min = -(__offsety - state.scrolly - state.height)
-                state.scrolly = math_max(min, state.scrolly - 2)
+                state.scrolly = math_max(min, state.scrolly + __scroll)
             end
-        end
-        if (input_IsMouseDown(MOUSE_5)) then
+        elseif (__scroll > 0) then
             if (__invertscroll) then
                 local min = -(__offsety - state.scrolly + __style.general.gap * 2)
-                state.scrolly = math_min(min, state.scrolly + 2)
+                state.scrolly = math_min(min, state.scrolly + __scroll)
             else
-                state.scrolly = math_min(0, state.scrolly + 2)
+                state.scrolly = math_min(0, state.scrolly + __scroll)
             end
         end
     end
@@ -899,13 +952,47 @@ function gmgui.endscrollingarea()
     addtowindow(__drawendscrollingarea, 0, 0, 0, true)
 end
 
+function gmgui.tabs(tabs, op_autosize)
+    local length = #tabs
+    if (length == 0) then
+        return
+    end
+
+    local state = getstate()
+    local inner = state.inner
+    local widtheach = op_autosize and ((state.width - (__style.general.gap * (length + 1))) / length) or 0
+
+    if (length == 1) then
+        local text = tabs[1]
+        return gmgui.button(text, false, op_autosize and widtheach or nil) and text
+    end
+
+    local currenttab = inner[tabs] or -1
+    local selected = nil
+    local i = 1
+    ::do_tabs::
+    local text = tabs[i]
+    if (gmgui.button(text, false, op_autosize and widtheach or nil)) then
+        selected = text
+    end
+    if (i ~= length) then
+        gmgui.sameline()
+        i = i + 1
+        goto do_tabs
+    end
+
+    inner[tabs] = selected
+
+    return selected
+end
+
 --> sorts elements based on their z-index
 local function windowsorter(a, b)
     return a[1][2] < b[1][2]
 end
 
 --> responsible for rendering the draw buffer elements to the screen - this has been heavily optimised so its a little hard to read
-hook.pre("DrawRT", "__gmgui_render", function()
+hook.pre("ljeutil/render", "__gmgui_render", function()
     local wlength = drawlist.length
     if (wlength == 0) then
         return
@@ -980,6 +1067,10 @@ hook.pre("DrawRT", "__gmgui_render", function()
     drawlist.length = 0 --> reset draw list length
     drawlist.target = 0
     __lastlength = wlength
+
+    local scroll = input.GetAnalogValue(ANALOG_MOUSE_WHEEL)
+    __scroll = (scroll - __lastscroll) * 8
+    __lastscroll = scroll
 
     --> perform a memory cycle if we need to
     if (__queuedcycle) then
