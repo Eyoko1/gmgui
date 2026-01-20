@@ -742,7 +742,7 @@ local function __drawcheckbox(data, x, y)
     surface_DrawText(data[1])
 end
 
-function gmgui.checkbox(text, op_state)
+function gmgui.checkbox(text, op_state, op_override) --> op_override is the forced value before input is checked
     if (__DISABLE_RENDERING) then return end
 
     local state = getstate()
@@ -756,6 +756,8 @@ function gmgui.checkbox(text, op_state)
     if (checked == nil) then
         checked = op_state
     end
+
+    checked = op_override
 
     if (hovered) then
         state.framehovered = true
@@ -820,6 +822,7 @@ local function __drawchild(data, x, y)
         surface_DrawOutlinedRect(x, y, width, height)
     else
         local font = __style.fonts.small
+        local textwidth = surface_GetTextSize(text)
         surface_DrawLine(x, y, x, y + height) --> tl -> bl
         surface_DrawLine(x + width - 1, y, x + width - 1, y + height - 1) --> tr -> br
         surface_DrawLine(x + 1, y + height - 1, x + width, y + height - 1) --> bl -> br
@@ -828,7 +831,6 @@ local function __drawchild(data, x, y)
         settextcolor(__style.general.text)
         surface_SetTextPos(x + 28, y - (fontdata[font].size * 0.5))
         surface_DrawText(text)
-        local textwidth = surface_GetTextSize(text)
         surface_DrawLine(x + 36 + textwidth, y, x + width - 1, y) --> text -> tr
     end
 end
@@ -836,19 +838,19 @@ end
 function gmgui.beginchild(name, x, y, width, height) --> returns the x, y, width, height
     if (__DISABLE_RENDERING) then return end
 
-    if (x <= 0) then
+    if (x or 0 <= 0) then
         x = __style.general.inset
     end
 
-    if (y <= 0) then
+    if (y or 0 <= 0) then
         y = __offsety + __style.general.inset
     end
 
-    if (width <= 0) then
+    if (width or 0 <= 0) then
         width = __windowwidth - x - __style.general.inset
     end
 
-    if (height <= 0) then
+    if (height or 0 <= 0) then
         height = __windowheight - y - __style.general.inset
     end
 
@@ -954,7 +956,7 @@ function gmgui.endscrollingarea()
     addtowindow(__drawendscrollingarea, 0, 0, 0, true)
 end
 
-function gmgui.tabs(tabs, op_autosize)
+function gmgui.tabs(tabs, op_autosize) --> tabs must be a reference to a table, don't pass it like this: gmgui.tabs({"a", "b", "c", ...}, op_autosize)
     local length = #tabs
     if (length == 0) then
         return
@@ -970,12 +972,11 @@ function gmgui.tabs(tabs, op_autosize)
     end
 
     local currenttab = inner[tabs] or -1
-    local selected = nil
     local i = 1
     ::do_tabs::
     local text = tabs[i]
     if (gmgui.button(text, false, op_autosize and widtheach or nil)) then
-        selected = text
+        inner[tabs] = text
     end
     if (i ~= length) then
         gmgui.sameline()
@@ -983,9 +984,7 @@ function gmgui.tabs(tabs, op_autosize)
         goto do_tabs
     end
 
-    inner[tabs] = selected
-
-    return selected
+    return inner[tabs] or tabs[1]
 end
 
 --> sorts elements based on their z-index
@@ -1085,6 +1084,7 @@ hook.pre("StartCommand", "__gmgui_input", function()
     __clicked = input_WasMousePressed(MOUSE_LEFT) or input_WasMouseDoublePressed(MOUSE_LEFT)
 end)
 
+--[=[
 local __lastgc = gcinfo()
 local __lastgctime = SysTime()
 local __gcincrease = 0
@@ -1167,3 +1167,4 @@ hook.pre("PostRender", "__gmgui_test", function()
     end
     ]]
 end)
+]=]
