@@ -15,6 +15,8 @@
 --> elements are drawn by putting them into a buffer where they are represented by a fast rendering function, and a pre-allocated table
 --> this buffer is not 'cleared' per frame, but instead the length which is used for reading from it is reset back to 0 - this saves tons of time and memory
 
+local SCROLL_SENSITIVITY = 12
+
 local surface_DrawText = surface.DrawText
 local surface_SetDrawColor = surface.SetDrawColor
 local surface_SetTextPos = surface.SetTextPos
@@ -1069,7 +1071,7 @@ hook.pre("ljeutil/render", "__gmgui_render", function()
     __lastlength = wlength
 
     local scroll = input.GetAnalogValue(ANALOG_MOUSE_WHEEL)
-    __scroll = (scroll - __lastscroll) * 8
+    __scroll = (scroll - __lastscroll) * SCROLL_SENSITIVITY
     __lastscroll = scroll
 
     --> perform a memory cycle if we need to
