@@ -7,13 +7,13 @@ local NET_LIMIT = 50
 local netmessages = {}
 local activenetmessage = nil
 
-_G.net.Start = lje.detour(_G.net.Start, function(message, unreliable)
+rawset(_G.net, "Start", lje.detour(_G.net.Start, function(message, unreliable)
     activenetmessage = message
 
     return net.Start(message, unreliable)
-end)
+end))
 
-_G.net.SendToServer = lje.detour(_G.net.SendToServer, function()
+rawset(_G.net, "SendToServer", lje.detour(_G.net.SendToServer, function()
     if (activenetmessage) then
         table.insert(netmessages, 1, activenetmessage)
         if (#netmessages > NET_LIMIT) then
@@ -23,7 +23,7 @@ _G.net.SendToServer = lje.detour(_G.net.SendToServer, function()
     activenetmessage = nil
 
     return net.SendToServer()
-end)
+end))
 
 hook.pre("PostRender", "__gmgui_test", function()
     gmgui.startwindow("GmSpy", 500, 900, 500, 300, 100)

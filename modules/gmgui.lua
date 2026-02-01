@@ -87,12 +87,12 @@ local gmgui = {
     style = {
         fonts = {
             text = __font("Text", {
-                font = "DinaRemasterII",
+                font = "Verdana",
                 size = 16,
                 antialias = false
             }),
             small = __font("Small", {
-                font = "DinaRemasterII",
+                font = "Verdana",
                 size = 14,
                 antialias = false
             })
