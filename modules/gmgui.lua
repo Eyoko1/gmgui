@@ -8,7 +8,7 @@
 
 --> this code is a little messy, and might be hard to read which is mainly due to the optimisations i made so sorry about that
 
---> this uses my ljeutil library so make sure that has been included before this is ran
+--> this uses my lje-util library so make sure that has been included before this is ran
 
 --> arguments prefixed with op_ are optional
 
@@ -56,8 +56,6 @@ local MOUSE_RIGHT = MOUSE_RIGHT
 local MOUSE_MIDDLE = MOUSE_MIDDLE
 
 local blanktexture = surface.GetTextureID("vgui/white")
-
-local environment = lje.env.get()
 
 local function __log(info, ...)
     lje.con_print(string.format(info, ...))
@@ -136,7 +134,7 @@ local gmgui = {
     },
     states = {} -- key: window name, value => see createstate()
 }
-environment.gmgui = gmgui
+_G.gmgui = gmgui
 
 --> references to the drawlist / buffer so we don't need to index gmgui every time we need these commonly used things
 local drawlist = gmgui.drawlist
@@ -993,7 +991,7 @@ local function windowsorter(a, b)
 end
 
 --> responsible for rendering the draw buffer elements to the screen - this has been heavily optimised so its a little hard to read
-hook.pre("ljeutil/render", "__gmgui_render", function()
+hook.pre("lje-util/render", "__gmgui_render", function()
     local wlength = drawlist.length
     if (wlength == 0) then
         return

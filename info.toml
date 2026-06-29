@@ -5,5 +5,5 @@ name = "gmgui"
 version = "1.1.1"
 author = "Eyoko1"
 dependencies = [
-    "Eyoko1.ljeutil"
+    "Eyoko1.lje-util"
 ]
